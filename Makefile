@@ -2,35 +2,45 @@
 
 batch_file=.batch.lock
 proc_file=.proc.lock
-slurm_prefix=/home/aharun/.slurm
+slurm=train debug prepare 
+SLURM_PREFIX=./slurm
+out_files=$(wildcard ${SLURM_PREFIX}/*.out)
+err_files=$(wildcard ${SLURM_PREFIX}/*.err)
 
-slurm_ids=$(shell cat ${batch_file} | awk '{ print $$4 }')
-out_files=$(patsubst %, ${slurm_prefix}/%.out, ${slurm_ids})
-err_files=$(patsubst %, ${slurm_prefix}/%.err, ${slurm_ids})
-slurm_files=$(patsubst %.slurm, %, $(wildcard *.slurm))
+ifndef JOB_ID
+	JOB_ID=$(shell tail -1 ${proc_file})
+endif
 
+all: show list
 
-all: list
+echo:
+	@echo ${JOB_ID}
 
 list:
 	squeue -u ${USER}
 
-${slurm_files}: %: %.slurm
+show:
+	@cat ${proc_file}
+
+${slurm}: %: %.slurm
 	@sbatch $< | tee -a ${batch_file}
+	@tail -1 ${batch_file} | awk '{ print $$4 }' >> ${proc_file}
 
-${proc_file}: ${batch_file}
-	@tail -1 $^ | awk '{ print $$4 }' > $@
+cancel kill: #${proc_file}
+	scancel ${JOB_ID}
+	@sed -i '/${JOB_ID}/d' ${proc_file}
 
-cancel kill stop: ${proc_file}
-	scancel $(shell head -1 ${proc_file})
-	@head -n -1 ${batch_file} > ${proc_file}
-	@mv ${proc_file} ${batch_file}
-	@tail -1 ${batch_file} | awk '{ print $$4 }' > ${proc_file}
+drop:
+	@sed -i '/${JOB_ID}/d' ${proc_file}
 
-less more head tail vim cat: ${proc_file}
-	$@ ${slurm_prefix}/$(shell head -1 ${proc_file}).out
-	$@ ${slurm_prefix}/$(shell head -1 ${proc_file}).err
+empty:
+	@rm ${proc_file}
+
+less more head tail vim cat: #${proc_file}
+	$@ ${SLURM_PREFIX}/${JOB_ID}.out 
+	$@ ${SLURM_PREFIX}/${JOB_ID}.err
 
 clean:
 	rm $(out_files) $(err_files)
-.PHONY: all list ${slurm_files} kill stop cancel less more head tail clean
+.PHONY: list kill stop cancel ${slurm} less more head tail clean
+
